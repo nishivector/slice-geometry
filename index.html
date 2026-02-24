@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Slice Geometry</title>
+  <script src="https://cdn.jsdelivr.net/npm/tone@15.1.22/dist/Tone.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.183.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.183.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      overflow: hidden;
+      background: #0a0a0a;
+      font-family: 'Orbitron', monospace;
+      touch-action: none;
+    }
+    
+    #gameCanvas {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+    
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 999;
+      background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.6) 100%);
+    }
+    
+    #startScreen {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(15,15,20,0.92) 0%, rgba(8,8,12,0.88) 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      transition: opacity 0.6s ease-out;
+    }
+    
+    #startScreen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+    
+    #startScreen h1 {
+      font-size: clamp(28px, 6vw, 56px);
+      color: #fff;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      animation: titleReveal 1.2s ease-out forwards;
+      text-shadow: 0 0 30px rgba(0,255,255,0.5), 0 0 60px rgba(0,255,255,0.3);
+    }
+    
+    @keyframes titleReveal {
+      from { opacity: 0; letter-spacing: 0.4em; transform: translateY(-15px); }
+      to { opacity: 1; letter-spacing: 0.15em; transform: translateY(0); }
+    }
+    
+    #startScreen .tagline {
+      margin-top: 20px;
+      font-size: clamp(12px, 2.5vw, 18px);
+      color: rgba(0,255,255,0.7);
+      letter-spacing: 0.2em;
+      animation: fadeIn 1s ease-out 0.5s forwards;
+      opacity: 0;
+    }
+    
+    @keyframes fadeIn {
+      to { opacity: 1; }
+    }
+    
+    #startScreen .instructions {
+      margin-top: 40px;
+      font-size: clamp(10px, 2vw, 14px);
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+      max-width: 80%;
+      line-height: 1.8;
+      animation: fadeIn 1s ease-out 0.8s forwards;
+      opacity: 0;
+    }
+    
+    #startScreen .tap-start {
+      margin-top: 50px;
+      font-size: clamp(14px, 3vw, 20px);
+      color: rgba(255,255,255,0.8);
+      letter-spacing: 0.3em;
+      animation: pulse 2s ease-in-out infinite, fadeIn 1s ease-out 1s forwards;
+      opacity: 0;
+      cursor: pointer;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 0.8; }
+      50% { opacity: 1; }
+    }
+    
+    #hud {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 100;
+      color: #fff;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    #hud.visible { opacity: 1; }
+    
+    #hud .level {
+      font-size: 18px;
+      color: #0ff;
+      text-shadow: 0 0 10px #0ff;
+    }
+    
+    #hud .score {
+      margin-top: 8px;
+      color: rgba(255,255,255,0.8);
+    }
+    
+    #hud .best {
+      margin-top: 4px;
+      font-size: 12px;
+      color: rgba(0,255,255,0.6);
+    }
+    
+    #gameOver {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s;
+    }
+    
+    #gameOver.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    #gameOver h2 {
+      font-size: 36px;
+      color: #ff3366;
+      letter-spacing: 0.2em;
+    }
+    
+    #gameOver .final-score {
+      margin-top: 20px;
+      font-size: 24px;
+      color: #fff;
+    }
+    
+    #gameOver .restart {
+      margin-top: 40px;
+      font-size: 16px;
+      color: rgba(255,255,255,0.7);
+      cursor: pointer;
+      animation: pulse 2s infinite;
+    }
+    
+    #levelComplete {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,255,255,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 15;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s;
+    }
+    
+    #levelComplete.visible {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    
+    #levelComplete span {
+      font-size: 48px;
+      color: #0ff;
+      text-shadow: 0 0 30px #0ff;
+      letter-spacing: 0.3em;
+    }
+    
+    #credits {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: #000;
+      color: #fff;
+      font-family: 'Orbitron', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      z-index: 100;
+    }
+    
+    #credits.visible {
+      display: flex;
+    }
+    
+    #credits .title {
+      font-size: 32px;
+      letter-spacing: 0.2em;
+    }
+    
+    #credits .author {
+      opacity: 0.5;
+      font-size: 12px;
+    }
+    
+    #credits .tech {
+      opacity: 0.4;
+      font-size: 11px;
+      margin-top: 16px;
+    }
+    
+    #credits .year {
+      opacity: 0.3;
+      font-size: 10px;
+    }
+    
+    #credits .continue {
+      margin-top: 32px;
+      opacity: 0.5;
+      font-size: 12px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  
+  <div id="startScreen">
+    <h1>Slice Geometry</h1>
+    <div class="tagline">Cut through reality. Redirect the flow.</div>
+    <div class="instructions">
+      Draw slicing lines through geometric barriers<br>
+      to guide particles to target portals
+    </div>
+    <div class="tap-start">[ TAP TO BEGIN ]</div>
+  </div>
+  
+  <div id="hud">
+    <div class="level">LEVEL <span id="levelNum">1</span> / 5</div>
+    <div class="score">SCORE: <span id="score">0</span></div>
+    <div class="best">BEST: <span id="bestScore">0</span></div>
+  </div>
+  
+  <div id="levelComplete">
+    <span>CLEARED</span>
+  </div>
+  
+  <div id="gameOver">
+    <h2>GAME OVER</h2>
+    <div class="final-score">SCORE: <span id="finalScore">0</span></div>
+    <div class="restart">[ TAP TO RETRY ]</div>
+  </div>
+  
+  <a href="https://github.com/nishivector/slice-geometry" target="_blank" style="
+    position: fixed; bottom: 16px; right: 16px;
+    color: rgba(255,255,255,0.4); font-size: 12px;
+    text-decoration: none; font-family: monospace;
+    z-index: 1000;
+  ">GitHub ↗</a>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // Game Constants
+    const SCORE_KEY = 'slice-geometry-highscore';
+    const LEVEL_COUNT = 5;
+    const PARTICLE_COUNT = 12;
+    const BARRIER_COUNT_BASE = 3;
+    
+    // Level configurations
+    const LEVELS = [
+      { name: 'FIRST CUT', barriers: 3, time: 60 },
+      { name: 'MAZE', barriers: 4, time: 55 },
+      { name: 'SPLIT', barriers: 5, time: 50 },
+      { name: 'LABYRINTH', barriers: 6, time: 45 },
+      { name: 'GEOMETRIC', barriers: 7, time: 40 }
+    ];
+    
+    // Game State
+    let gameState = 'start';
+    let currentLevel = 0;
+    let score = 0;
+    let timeLeft = 60;
+    let particles = [];
+    let barriers = [];
+    let portals = [];
+    let sliceLines = [];
+    let lastSliceTime = 0;
+    let isSlicing = false;
+    let sliceStart = null;
+    
+    // Audio
+    let musicStarted = false;
+    let musicSynth, musicLoop;
+    let sfxSynth;
+    
+    // Three.js
+    let scene, camera, renderer, composer;
+    let clock;
+    
+    // DOM Elements
+    const canvas = document.getElementById('gameCanvas');
+    const startScreen = document.getElementById('startScreen');
+    const hud = document.getElementById('hud');
+    const levelComplete = document.getElementById('levelComplete');
+    const gameOverScreen = document.getElementById('gameOver');
+    const levelNumEl = document.getElementById('levelNum');
+    const scoreEl = document.getElementById('score');
+    const bestScoreEl = document.getElementById('bestScore');
+    const finalScoreEl = document.getElementById('finalScore');
+    
+    // Initialize
+    init();
+    
+    function init() {
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0a0a);
+      scene.fog = new THREE.Fog(0x0a0a0a, 20, 50);
+      
+      // Camera - portrait optimized
+      const aspect = window.innerWidth / window.innerHeight;
+      camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 100);
+      if (aspect < 1) {
+        camera.position.set(0, 0, 18);
+      } else {
+        camera.position.set(0, 0, 15);
+      }
+      camera.lookAt(0, 0, 0);
+      
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      
+      // Post-processing
+      composer = new EffectComposer(renderer);
+      composer.addPass(new RenderPass(scene, camera));
+      const bloom = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        1.0, 0.4, 0.1
+      );
+      composer.addPass(bloom);
+      
+      // Clock
+      clock = new THREE.Clock();
+      
+      // Lights
+      const ambient = new THREE.AmbientLight(0xffffff, 0.3);
+      scene.add(ambient);
+      
+      const point1 = new THREE.PointLight(0x00ffff, 1, 30);
+      point1.position.set(-5, 5, 5);
+      scene.add(point1);
+      
+      const point2 = new THREE.PointLight(0xff00ff, 0.5, 30);
+      point2.position.set(5, -5, 5);
+      scene.add(point2);
+      
+      // Background geometry
+      createBackground();
+      
+      // Events
+      window.addEventListener('resize', onResize);
+      canvas.addEventListener('pointerdown', onPointerDown);
+      canvas.addEventListener('pointermove', onPointerMove);
+      canvas.addEventListener('pointerup', onPointerUp);
+      canvas.addEventListener('pointercancel', onPointerUp);
+      
+      startScreen.addEventListener('pointerdown', startGame);
+      gameOverScreen.querySelector('.restart').addEventListener('pointerdown', restartGame);
+      
+      // Load best score
+      bestScoreEl.textContent = getHighScore();
+      
+      // Start animation
+      animate();
+    }
+    
+    function createBackground() {
+      // Floating geometric shapes
+      for (let i = 0; i < 20; i++) {
+        const geom = Math.random() > 0.5 
+          ? new THREE.BoxGeometry(0.3, 0.3, 0.3)
+          : new THREE.OctahedronGeometry(0.2);
+        const mat = new THREE.MeshBasicMaterial({
+          color: 0x00ffff,
+          transparent: true,
+          opacity: 0.1
+        });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.position.set(
+          (Math.random() - 0.5) * 30,
+          (Math.random() - 0.5) * 30,
+          -10 - Math.random() * 10
+        );
+        mesh.userData.rotSpeed = (Math.random() - 0.5) * 0.02;
+        mesh.userData.floatSpeed = 0.3 + Math.random() * 0.3;
+        mesh.userData.floatOffset = Math.random() * Math.PI * 2;
+        mesh.userData.baseY = mesh.position.y;
+        scene.add(mesh);
+      }
+    }
+    
+    function setupLevel() {
+      // Clear existing
+      particles.forEach(p => scene.remove(p.mesh));
+      barriers.forEach(b => scene.remove(b.mesh));
+      portals.forEach(p => scene.remove(p.mesh));
+      particles = [];
+      barriers = [];
+      portals = [];
+      sliceLines.forEach(l => scene.remove(l));
+      sliceLines = [];
+      
+      const level = LEVELS[currentLevel];
+      timeLeft = level.time;
+      
+      // Create portals (targets)
+      const portalCount = Math.min(3, currentLevel + 2);
+      for (let i = 0; i < portalCount; i++) {
+        const portal = createPortal();
+        portal.position.set(
+          (Math.random() - 0.5) * 10,
+          (Math.random() - 0.5) * 12,
+          0
+        );
+        portal.userData.collected = false;
+        portals.push(portal);
+        scene.add(portal);
+      }
+      
+      // Create particles
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const particle = createParticle();
+        particle.position.set(
+          (Math.random() - 0.5) * 6,
+          -6 + Math.random() * 2,
+          0
+        );
+        particle.userData.velocity = new THREE.Vector3(
+          (Math.random() - 0.5) * 0.02,
+          Math.random() * 0.02,
+          0
+        );
+        particles.push(particle);
+        scene.add(particle);
+      }
+      
+      // Create barriers
+      const barrierCount = level.barriers;
+      for (let i = 0; i < barrierCount; i++) {
+        const barrier = createBarrier();
+        barrier.position.set(
+          (Math.random() - 0.5) * 8,
+          (Math.random() - 0.5) * 8,
+          0
+        );
+        barrier.rotation.z = Math.random() * Math.PI;
+        barriers.push(barrier);
+        scene.add(barrier);
+      }
+      
+      levelNumEl.textContent = currentLevel + 1;
+    }
+    
+    function createPortal() {
+      const group = new THREE.Group();
+      
+      // Outer ring
+      const ringGeom = new THREE.TorusGeometry(0.8, 0.08, 8, 32);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+      const ring = new THREE.Mesh(ringGeom, ringMat);
+      group.add(ring);
+      
+      // Inner glow
+      const glowGeom = new THREE.CircleGeometry(0.6, 32);
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x00ff88,
+        transparent: true,
+        opacity: 0.3
+      });
+      const glow = new THREE.Mesh(glowGeom, glowMat);
+      group.add(glow);
+      
+      group.userData = { type: 'portal', ring, glow };
+      return group;
+    }
+    
+    function createParticle() {
+      const geom = new THREE.SphereGeometry(0.2, 16, 16);
+      const mat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+      const mesh = new THREE.Mesh(geom, mat);
+      
+      // Glow
+      const glowMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.4
+      });
+      const glow = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), glowMat);
+      mesh.add(glow);
+      
+      mesh.userData = { type: 'particle', glow };
+      return mesh;
+    }
+    
+    function createBarrier() {
+      const group = new THREE.Group();
+      
+      // Main barrier shape - varied geometry
+      const types = ['box', 'cylinder', 'triangle'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      
+      let geom;
+      switch(type) {
+        case 'box':
+          geom = new THREE.BoxGeometry(2 + Math.random(), 0.3 + Math.random() * 0.5, 0.2);
+          break;
+        case 'cylinder':
+          geom = new THREE.CylinderGeometry(0.8, 0.8, 0.2, 8);
+          break;
+        case 'triangle':
+          geom = new THREE.ConeGeometry(0.8, 1.5, 3);
+          break;
+      }
+      
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      const mesh = new THREE.Mesh(geom, mat);
+      group.add(mesh);
+      
+      // Edge glow
+      const edgeMat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 0.5
+      });
+      const edge = new THREE.Mesh(geom.clone(), edgeMat);
+      edge.scale.set(1.05, 1.1, 1.1);
+      group.add(edge);
+      
+      group.userData = { type: 'barrier', mesh, edge, active: true };
+      return group;
+    }
+    
+    function createSliceLine(start, end) {
+      const points = [start, end];
+      const geom = new THREE.BufferGeometry().setFromPoints(points);
+      const mat = new THREE.LineBasicMaterial({ 
+        color: 0xffffff,
+        linewidth: 2
+      });
+      const line = new THREE.Line(geom, mat);
+      line.userData.born = clock.getElapsedTime();
+      return line;
+    }
+    
+    function startGame(e) {
+      e.stopPropagation();
+      
+      gameState = 'playing';
+      startScreen.classList.add('hidden');
+      hud.classList.add('visible');
+      
+      // Start music
+      startMusic();
+      
+      // Setup first level
+      setupLevel();
+    }
+    
+    function restartGame(e) {
+      e.stopPropagation();
+      
+      gameState = 'playing';
+      gameOverScreen.classList.remove('visible');
+      currentLevel = 0;
+      score = 0;
+      scoreEl.textContent = '0';
+      
+      setupLevel();
+    }
+    
+    async function startMusic() {
+      if (musicStarted || typeof Tone === 'undefined') return;
+      musicStarted = true;
+      
+      try {
+        await Tone.start();
+        
+        // Ambient drone
+        musicSynth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'sine' },
+          envelope: { attack: 1, decay: 0.4, sustain: 0.6, release: 2 },
+          volume: -20
+        }).toDestination();
+        
+        const reverb = new Tone.Reverb({ decay: 4, wet: 0.6 }).toDestination();
+        musicSynth.connect(reverb);
+        
+        // Arpeggio
+        const notes = ['C2', 'G2', 'E2', 'B2'];
+        let i = 0;
+        musicLoop = new Tone.Loop((time) => {
+          musicSynth.triggerAttackRelease(notes[i % notes.length], '4n', time);
+          i++;
+        }, '4n');
+        
+        Tone.Transport.bpm.value = 80;
+        musicLoop.start(0);
+        Tone.Transport.start();
+        
+        // SFX synth
+        sfxSynth = new Tone.Synth({
+          oscillator: { type: 'square' },
+          envelope: { attack: 0.01, decay: 0.1, sustain: 0, release: 0.1 },
+          volume: -25
+        }).toDestination();
+        
+      } catch(e) {
+        console.warn('Audio unavailable:', e);
+      }
+    }
+    
+    function playSliceSound() {
+      if (!sfxSynth) return;
+      try {
+        sfxSynth.triggerAttackRelease('C5', '32n');
+      } catch(e) {}
+    }
+    
+    function playCollectSound() {
+      if (!sfxSynth) return;
+      try {
+        sfxSynth.triggerAttackRelease('G5', '16n');
+        setTimeout(() => sfxSynth.triggerAttackRelease('B5', '16n'), 80);
+      } catch(e) {}
+    }
+    
+    function playLevelComplete() {
+      if (!sfxSynth) return;
+      try {
+        sfxSynth.triggerAttackRelease('C4', '8n');
+        setTimeout(() => sfxSynth.triggerAttackRelease('E4', '8n'), 100);
+        setTimeout(() => sfxSynth.triggerAttackRelease('G4', '8n'), 200);
+        setTimeout(() => sfxSynth.triggerAttackRelease('C5', '4n'), 300);
+      } catch(e) {}
+    }
+    
+    function playGameOver() {
+      if (!sfxSynth) return;
+      try {
+        sfxSynth.triggerAttackRelease('C2', '4n');
+        setTimeout(() => sfxSynth.triggerAttackRelease('G1', '2n'), 200);
+      } catch(e) {}
+    }
+    
+    function onPointerDown(e) {
+      if (gameState !== 'playing') return;
+      
+      const rect = canvas.getBoundingClientRect();
+      sliceStart = new THREE.Vector3(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        0
+      );
+      isSlicing = true;
+    }
+    
+    function onPointerMove(e) {
+      if (!isSlicing || gameState !== 'playing') return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const current = new THREE.Vector3(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        0
+      );
+      
+      // Draw slice line
+      const sliceLine = createSliceLine(
+        sliceStart.clone().multiplyScalar(8),
+        current.clone().multiplyScalar(8)
+      );
+      scene.add(sliceLine);
+      sliceLines.push(sliceLine);
+      
+      // Check barrier cuts
+      checkSlice(sliceStart, current);
+      
+      sliceStart = current;
+      playSliceSound();
+    }
+    
+    function onPointerUp() {
+      isSlicing = false;
+      sliceStart = null;
+    }
+    
+    function checkSlice(start, end) {
+      const now = clock.getElapsedTime();
+      if (now - lastSliceTime < 0.1) return;
+      lastSliceTime = now;
+      
+      const sliceDir = new THREE.Vector3().subVectors(end, start).normalize();
+      
+      barriers.forEach(barrier => {
+        if (!barrier.userData.active) return;
+        
+        const barrierPos = barrier.position;
+        const toBarrier = new THREE.Vector3().subVectors(barrierPos, start);
+        const projLength = toBarrier.dot(sliceDir);
+        
+        if (projLength < 0) return;
+        
+        const closest = start.clone().add(sliceDir.clone().multiplyScalar(projLength));
+        const dist = barrierPos.distanceTo(closest);
+        
+        if (dist < 1.5) {
+          // Cut the barrier!
+          barrier.userData.active = false;
+          
+          // Visual feedback - scale down and fade
+          barrier.scale.set(0.01, 0.01, 0.01);
+          
+          // Show floating score
+          showFloatingText('+10', 
+            (barrierPos.x + 8) / 16 * window.innerWidth,
+            (barrierPos.y + 6) / 12 * window.innerHeight,
+            '#0ff'
+          );
+          
+          score += 10;
+          scoreEl.textContent = score;
+        }
+      });
+    }
+    
+    function showFloatingText(text, x, y, color) {
+      const el = document.createElement('div');
+      el.textContent = text;
+      el.style.cssText = `
+        position: fixed;
+        left: ${x}px;
+        top: ${y}px;
+        color: ${color};
+        font-size: 24px;
+        font-family: 'Orbitron', monospace;
+        pointer-events: none;
+        z-index: 500;
+        animation: floatUp 1s ease-out forwards;
+        text-shadow: 0 0 10px ${color};
+      `;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 1000);
+    }
+    
+    function updateParticles() {
+      particles.forEach(p => {
+        // Move
+        p.position.add(p.userData.velocity);
+        
+        // Bounce off barriers
+        barriers.forEach(b => {
+          if (!b.userData.active) return;
+          const dist = p.position.distanceTo(b.position);
+          if (dist < 1) {
+            // Simple bounce
+            const away = new THREE.Vector3().subVectors(p.position, b.position).normalize();
+            p.userData.velocity.reflect(new THREE.Vector3(away.x, away.y, 0));
+          }
+        });
+        
+        // Collect portals
+        portals.forEach(portal => {
+          if (portal.userData.collected) return;
+          const dist = p.position.distanceTo(portal.position);
+          if (dist < 0.8) {
+            portal.userData.collected = true;
+            portal.scale.set(0.01, 0.01, 0.01);
+            
+            score += 50;
+            scoreEl.textContent = score;
+            playCollectSound();
+            
+            showFloatingText('+50',
+              (portal.position.x + 8) / 16 * window.innerWidth,
+              (portal.position.y + 6) / 12 * window.innerHeight,
+              '#0f8'
+            );
+          }
+        });
+        
+        // Wrap around screen
+        if (p.position.x > 8) p.position.x = -8;
+        if (p.position.x < -8) p.position.x = 8;
+        if (p.position.y > 6) p.position.y = -6;
+        if (p.position.y < -6) p.position.y = 6;
+        
+        // Pulse effect
+        const t = clock.getElapsedTime();
+        p.userData.glow.scale.setScalar(1 + Math.sin(t * 3) * 0.2);
+      });
+      
+      // Check level complete
+      const allCollected = portals.every(p => p.userData.collected);
+      if (allCollected && gameState === 'playing') {
+        levelComplete.style.opacity = '1';
+        playLevelComplete();
+        
+        setTimeout(() => {
+          levelComplete.style.opacity = '0';
+          
+          if (currentLevel < LEVEL_COUNT - 1) {
+            currentLevel++;
+            setupLevel();
+          } else {
+            // Win!
+            const finalScore = score + Math.floor(timeLeft * 10);
+            saveHighScore(finalScore);
+            bestScoreEl.textContent = getHighScore();
+            
+            gameState = 'gameover';
+            finalScoreEl.textContent = finalScore;
+            gameOverScreen.classList.add('visible');
+          }
+        }, 1500);
+      }
+    }
+    
+    function updateTime(delta) {
+      if (gameState !== 'playing') return;
+      
+      timeLeft -= delta;
+      
+      if (timeLeft <= 0) {
+        timeLeft = 0;
+        gameState = 'gameover';
+        playGameOver();
+        
+        saveHighScore(score);
+        bestScoreEl.textContent = getHighScore();
+        finalScoreEl.textContent = score;
+        gameOverScreen.classList.add('visible');
+      }
+    }
+    
+    function updateAnimations() {
+      const t = clock.getElapsedTime();
+      
+      // Background shapes
+      scene.children.forEach(child => {
+        if (child.userData.rotSpeed) {
+          child.rotation.x += child.userData.rotSpeed;
+          child.rotation.y += child.userData.rotSpeed;
+          child.position.y = child.userData.baseY + 
+            Math.sin(t * child.userData.floatSpeed + child.userData.floatOffset) * 0.5;
+        }
+      });
+      
+      // Portal animation
+      portals.forEach(portal => {
+        if (portal.userData.collected) return;
+        portal.rotation.z += 0.02;
+        const scale = 1 + Math.sin(t * 2) * 0.1;
+        portal.scale.set(scale, scale, scale);
+        portal.userData.glow.material.opacity = 0.2 + Math.sin(t * 3) * 0.1;
+      });
+      
+      // Barrier idle animation
+      barriers.forEach(barrier => {
+        if (!barrier.userData.active) return;
+        barrier.rotation.z += 0.005;
+      });
+      
+      // Remove old slice lines
+      sliceLines = sliceLines.filter(line => {
+        const age = t - line.userData.born;
+        if (age > 0.3) {
+          scene.remove(line);
+          return false;
+        }
+        return true;
+      });
+    }
+    
+    function getHighScore() {
+      return parseInt(localStorage.getItem(SCORE_KEY) || '0');
+    }
+    
+    function saveHighScore(s) {
+      if (s > getHighScore()) {
+        localStorage.setItem(SCORE_KEY, s);
+      }
+    }
+    
+    function onResize() {
+      const aspect = window.innerWidth / window.innerHeight;
+      camera.aspect = aspect;
+      
+      if (aspect < 1) {
+        camera.position.z = 18;
+        camera.fov = 70;
+      } else {
+        camera.position.z = 15;
+        camera.fov = 60;
+      }
+      
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      
+      const delta = clock.getDelta();
+      
+      if (gameState === 'playing') {
+        updateParticles();
+        updateTime(delta);
+      }
+      
+      updateAnimations();
+      
+      composer.render();
+    }
+  </script>
+</body>
+</html>
